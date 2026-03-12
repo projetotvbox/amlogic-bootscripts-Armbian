@@ -15,5 +15,3 @@ fdtfile=amlogic/meson-sm1-x96-air-gbit.dtb
 
 # Enable ONLY for gxbb (S905) / gxl (S905X/L/W) to create fake u-boot header
 #soc_fixup=gxl-
-
-

@@ -14,7 +14,7 @@ assumption: you have vendor u-boot (the one that came with the box) running on e
 + **Step 4:** If you have a GXBB (S905) or GXL (S905X/W/L) soc, you also need **[gxl-fixup.scr](https://github.com/devmfc/amlogic-bootscripts-Armbian/blob/main/gxl-fixup.scr)**  
 + **Step 5:** Add an armbianEnv.txt file with the following content (file is also on github):  
 ```bash
-extraargs=earlycon rootflags=data=writeback rw no_console_suspend consoleblank=0 fsck.fix=yes fsck.repair=yes net.ifnames=0
+extraargs=earlycon=meson,0xfe07a000 console=ttyS0,921600n8 rootflags=data=writeback rw no_console_suspend consoleblank=0 fsck.fix=yes fsck.repair=yes net.ifnames=0 watchdog.stop_on_reboot=0 pd_ignore_unused clk_ignore_unused rootdelay=5
 bootlogo=false
 verbosity=7
 usbstoragequirks=0x2537:0x1066:u,0x2537:0x1068:u
@@ -42,6 +42,6 @@ rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
 
 All used files and source files can be found on [Github](https://github.com/devmfc/amlogic-bootscripts-Armbian).  
   
-This is tested on S905X, S905W, S912, S905X2, S922X, S905X3 and they all boot the kernel.  
+This is tested on S905X, S905W, S912, S905X2, S922X, S905X3 and S905X4 (HTV H8) and they all boot the kernel.  
 I did test S905 also, but it boots only the first time for some reason.  
-It will probably also work for S905X4 and S905W2, but did not test those. They are not supported by the Armbian kernel at this moment anyway.
+It will probably also work for S905W2, but did not test that. They are not supported by the Armbian kernel at this moment anyway.
