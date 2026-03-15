@@ -1,6 +1,6 @@
 # Amlogic boot scripts for Armbian
 
-**Language / Idioma:** [English](README.en.md) | [🟢 Português](README.md)
+**Language / Idioma:** [🟢 English](README.en.md) | [Português](README.md)
 
 ## Table of Contents
 - [Overview](#overview)
