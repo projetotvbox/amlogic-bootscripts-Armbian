@@ -41,6 +41,17 @@ rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
 # Ativar APENAS para gxbb (S905) / gxl (S905X/L/W) para criar cabeçalho u-boot falso
 #soc_fixup=gxl-
 ```
+> ⚠️ **Atenção: o `armbianEnv.txt` acima é um ponto de partida, não uma configuração universal.**
+>
+> O arquivo fornecido funciona para muitos dispositivos, mas não necessariamente para o seu. Diferentes boxes, SoCs e versões do Armbian podem exigir parâmetros distintos — especialmente na linha `extraargs`.
+>
+> **Antes de substituir o arquivo**, compare-o com o `armbianEnv.txt` original que vem na imagem do Armbian e mescle com cuidado. Pontos de atenção:
+> - Parâmetros presentes no original que estão ausentes aqui podem ser necessários para o seu hardware.
+> - A linha `extraargs` é a que mais varia entre SoCs e pode precisar de adaptação.
+> - Em caso de dúvida, parta do arquivo original e aplique apenas as alterações que você compreende.
+>
+> Se o sistema não inicializar, restaurar o `armbianEnv.txt` original é geralmente o primeiro passo para diagnosticar o problema.
+
 + **Passo 6:** Altere *fdtfile* para o DTB da sua box.  
 + **Passo 7:** (opcional desde a versão 3:) Altere *rootdev* para o UUID correto do rootfs para sua imagem ou mude para /dev/sda2 quando inicializar do USB ou /dev/mmcblk0p2 quando inicializar do SDCARD  
 + **Passo 8:** Apenas se sua box tiver um SoC GXBB (S905) ou GXL (S905X/W/L), descomente a linha *soc_fixup=gxl-*  

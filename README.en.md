@@ -41,6 +41,17 @@ rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
 # Enable ONLY for gxbb (S905) / gxl (S905X/L/W) to create fake u-boot header
 #soc_fixup=gxl-
 ```
+> ⚠️ **Note: the `armbianEnv.txt` above is a starting point, not a universal configuration.**
+>
+> The file provided works for many devices, but it may not work out of the box for yours. Different TV boxes, SoCs, and Armbian versions may require different parameters — especially the `extraargs` line.
+>
+> **Before replacing the file**, compare it against the original `armbianEnv.txt` that comes with the Armbian image and merge carefully. Key things to watch for:
+> - Parameters present in the original that are absent here may be required for your specific hardware.
+> - The `extraargs` line varies the most between SoCs and may need to be adapted or extended.
+> - When in doubt, start from the original file and apply only the changes you understand.
+>
+> If the system fails to boot, restoring the original `armbianEnv.txt` is usually the first step to diagnose the issue.
+
 + **Step 6:** Change *fdtfile* to the DTB for your box.  
 + **Step 7:** (optional since version 3:) Change *rootdev* to the right UUID for the rootfs for your image or change to /dev/sda2 when booting from USB or /dev/mmcblk0p2 when booting from SDCARD  
 + **Step 8:** Only if your box has a GXBB (S905) or GXL (S905X/W/L) soc, uncomment the line *soc_fixup=gxl-*  
