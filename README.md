@@ -6,23 +6,78 @@
 - [Visão Geral](#visão-geral)
 - [Configuração](#configuração)
 - [Dispositivos Suportados](#dispositivos-suportados)
-- [Avançado - Personalização do Bootloader](#avançado---personalização-do-bootloader)
+- [Solução de Problemas Avançada — Modificação do Bootloader](#solução-de-problemas-avançada--modificação-do-bootloader)
+- [Como Funciona Internamente](#como-funciona-internamente)
+
+---
 
 ## Visão Geral
 
-As imagens do Armbian para TV Boxes Amlogic usam blobs secundários de u-boot carregados em cadeia para inicializar imagens do kernel mainline.
-Os bootloaders u-boot do fabricante, no entanto, podem inicializar o Linux mainline perfeitamente sem eles. Portanto, eles não são necessários.
+As imagens do Armbian para TV Boxes Amlogic normalmente dependem de blobs secundários de u-boot para inicializar o kernel mainline. Na prática, eles não são necessários: o bootloader u-boot que veio de fábrica com a sua box já é capaz de fazer isso. Tudo que é preciso são algumas modificações nos scripts de boot do Armbian.
 
-Tudo o que é necessário são algumas modificações simples em alguns dos scripts u-boot do Armbian.
+> **Pré-requisito:** o u-boot do fabricante deve estar rodando na eMMC. Se sua box foi reflashada com outro bootloader, restaure a imagem Android original com a ferramenta [Amlogic USB Burning Tool](https://androidmtk.com/download-amlogic-usb-burning-tool) antes de continuar.
+
+---
 
 ## Configuração
-Pressuposição: você tem o u-boot do fabricante (o que veio com a box) rodando na eMMC. Se não, você pode restaurar a imagem Android original com a ferramenta Amlogic USB Burning.
 
-+ **Passo 1:** Baixe a versão mais recente do Armbian para s9xxx-box, vamos usar [bookworm minimal](https://dl.armbian.com/aml-s9xx-box/Bookworm_current_minimal)  
-+ **Passo 2:** Grave a imagem em um pendrive USB  
-+ **Passo 3:** Copie os scripts de boot modificados (**[aml_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/aml_autoscript)**, **[s905_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/s905_autoscript)**, **[emmc_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/emmc_autoscript)** ) para a partição FAT no pendrive. Sobrescreva os arquivos existentes.  
-+ **Passo 4:** Se você tem um SoC GXBB (S905) ou GXL (S905X/W/L), você também precisa de **[gxl-fixup.scr](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/gxl-fixup.scr)**  
-+ **Passo 5:** Adicione um arquivo armbianEnv.txt com o seguinte conteúdo (o arquivo também está no github):  
+### Passo 1 — Baixe a imagem do Armbian
+
+Baixe a versão mais recente do Armbian para s9xxx-box. Recomendamos a [bookworm minimal](https://dl.armbian.com/aml-s9xx-box/Bookworm_current_minimal).
+
+---
+
+### Passo 2 — Prepare a mídia de instalação
+
+Grave a imagem no pendrive usando o **[balenaEtcher](https://etcher.balena.io/)** — a opção mais simples — ou via linha de comando:
+
+```bash
+sudo dd if=Armbian_*.img of=/dev/sdX bs=4M status=progress conv=fsync
+```
+
+> ⚠️ Substitua `/dev/sdX` pelo seu pendrive. Use `lsblk` ou `fdisk -l` para confirmar o dispositivo correto. Com `dd`, gravar no dispositivo errado apaga os dados sem confirmação.
+
+Monte a partição FAT do pendrive e substitua os scripts de boot pelos modificados, sobrescrevendo os existentes:
+
+- **[aml_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/aml_autoscript)**
+- **[s905_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/s905_autoscript)**
+- **[emmc_autoscript](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/emmc_autoscript)**
+- **[gxl-fixup.scr](https://github.com/projetotvbox/amlogic-bootscripts-Armbian/blob/main/gxl-fixup.scr)** *(apenas se o seu SoC for GXBB/S905 ou GXL/S905X/W/L)*
+
+> **Compilando imagens próprias ou preparando múltiplos pendrives?** É possível modificar a imagem `.img` diretamente antes de gravar, evitando ter que editar cada pendrive individualmente. Para isso, monte a imagem com `losetup`:
+>
+> ```bash
+> sudo losetup -fP Armbian_*.img
+> lsblk | grep loop          # identifique o dispositivo e a partição FAT (geralmente loopXp1)
+> sudo mount /dev/loop0p1 /mnt/armbian_boot
+> ```
+>
+> Copie os scripts normalmente para `/mnt/armbian_boot/` e **prossiga pelos próximos passos normalmente**, editando o `armbianEnv.txt` e os demais parâmetros com a imagem ainda montada. Só ao final, após concluir todas as configurações, desmonte e grave:
+>
+> ```bash
+> sudo umount /mnt/armbian_boot
+> sudo losetup -d /dev/loop0
+> sudo dd if=Armbian_*.img of=/dev/sdX bs=4M status=progress conv=fsync
+> ```
+
+---
+
+### Passo 3 — Configure o `armbianEnv.txt`
+
+O `armbianEnv.txt` controla parâmetros essenciais do boot. Antes de editar, faça um backup do arquivo original:
+
+```bash
+sudo cp /mnt/seu_pendrive/armbianEnv.txt /mnt/seu_pendrive/armbianEnv.txt.bak
+```
+
+Edite com nano ou o editor de sua preferência:
+
+```bash
+sudo nano /mnt/seu_pendrive/armbianEnv.txt
+```
+
+**Conteúdo de referência:**
+
 ```bash
 extraargs=earlycon=meson,0xfe07a000 console=ttyS0,921600n8 rootflags=data=writeback rw no_console_suspend consoleblank=0 fsck.fix=yes fsck.repair=yes net.ifnames=0 watchdog.stop_on_reboot=0 pd_ignore_unused clk_ignore_unused rootdelay=5
 bootlogo=false
@@ -34,32 +89,77 @@ console=both
 # fdtfile=amlogic/meson-gxl-s905x-nexbox-a95x.dtb
 fdtfile=amlogic/meson-sm1-x96-air-gbit.dtb
 
-# defina isto para o UUID da partição raiz (o valor pode ser encontrado 
-# em /extlinux/extlinux.conf depois de APPEND root= ou com blkid)
-rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
+# defina isto para o UUID da partição raiz (o valor pode ser encontrado com blkid ou no fstab)
+#rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
+# ou use o label padrão da partição:
+#rootdev=LABEL=ROOTFS
 
 # Ativar APENAS para gxbb (S905) / gxl (S905X/L/W) para criar cabeçalho u-boot falso
 #soc_fixup=gxl-
 ```
-> ⚠️ **Atenção: o `armbianEnv.txt` acima é um ponto de partida, não uma configuração universal.**
->
-> O arquivo fornecido funciona para muitos dispositivos, mas não necessariamente para o seu. Diferentes boxes, SoCs e versões do Armbian podem exigir parâmetros distintos — especialmente na linha `extraargs`.
->
-> **Antes de substituir o arquivo**, compare-o com o `armbianEnv.txt` original que vem na imagem do Armbian e mescle com cuidado. Pontos de atenção:
-> - Parâmetros presentes no original que estão ausentes aqui podem ser necessários para o seu hardware.
-> - A linha `extraargs` é a que mais varia entre SoCs e pode precisar de adaptação.
-> - Em caso de dúvida, parta do arquivo original e aplique apenas as alterações que você compreende.
->
-> Se o sistema não inicializar, restaurar o `armbianEnv.txt` original é geralmente o primeiro passo para diagnosticar o problema.
 
-+ **Passo 6:** Altere *fdtfile* para o DTB da sua box.  
-+ **Passo 7:** (opcional desde a versão 3:) Altere *rootdev* para o UUID correto do rootfs para sua imagem ou mude para /dev/sda2 quando inicializar do USB ou /dev/mmcblk0p2 quando inicializar do SDCARD  
-+ **Passo 8:** Apenas se sua box tiver um SoC GXBB (S905) ou GXL (S905X/W/L), descomente a linha *soc_fixup=gxl-*  
-+ **Passo 9:** Desligue a box.  
-+ **Passo 10:** Coloque o disco USB na sua box.  
-+ **Passo 11:** Pressione o botão reset e mantenha pressionado  
-+ **Passo 12:** Ligue a box enquanto mantém o botão reset pressionado por aproximadamente 7 segundos.  
-+ **Passo 13:** Se você tiver sorte, agora ele inicializará o Armbian com um kernel mainline. Sem nenhum blob u-boot secundário.  
+> ⚠️ **Este arquivo é um ponto de partida, não uma configuração universal.**
+>
+> O conteúdo acima funciona para muitos dispositivos, mas pode não funcionar para o seu. Diferentes boxes, SoCs e versões do Armbian podem exigir parâmetros distintos — especialmente a linha `extraargs`.
+>
+> **Antes de substituir**, compare com o `armbianEnv.txt` original da imagem e mescle com cuidado. Parâmetros presentes no original e ausentes aqui podem ser necessários para o seu hardware. Em caso de dúvida, parta do original e aplique apenas as alterações que você compreende. Se o sistema não inicializar, restaurar o backup (`armbianEnv.txt.bak`) é o primeiro passo para diagnosticar.
+
+---
+
+### Passo 4 — Ajuste o `fdtfile`
+
+Altere a linha `fdtfile` para o DTB correspondente à sua box. Os arquivos disponíveis estão em `/boot/dtb/amlogic/` dentro da imagem do Armbian.
+
+---
+
+### Passo 5 — Ajuste o `rootdev` *(opcional desde a versão 3)*
+
+Por padrão, `rootdev` está comentado e o sistema usa o label `ROOTFS` automaticamente. Se precisar especificar manualmente:
+
+| Mídia | Valor |
+|-------|-------|
+| Pendrive USB | `/dev/sda2` |
+| Cartão SD | `/dev/mmcblk0p2` |
+| Por UUID *(recomendado)* | `UUID=<seu-uuid>` |
+| Por label | `LABEL=ROOTFS` |
+
+**Como obter o UUID da partição raiz:**
+
+Com o sistema rodando a partir do pendrive ou SD, execute:
+
+```bash
+blkid
+```
+
+Saída esperada:
+
+```
+/dev/sda2: UUID="92139c84-3871-41d7-a3f2-e8a943cbfa87" TYPE="ext4" PARTUUID="..."
+```
+
+Copie o valor `UUID=` da partição raiz (geralmente `sda2` ou `mmcblk0p2`) e cole no `armbianEnv.txt`. O UUID também pode ser encontrado em `/etc/fstab` ou no `armbianEnv.txt` original da imagem, se já estiver preenchido.
+
+---
+
+### Passo 6 — Ative o SoC fixup *(apenas GXBB/GXL)*
+
+Se sua box usar um SoC GXBB (S905) ou GXL (S905X/W/L), descomente a linha:
+
+```
+soc_fixup=gxl-
+```
+
+---
+
+### Passo 7 — Inicialize pelo pendrive
+
+1. Desligue a box.
+2. Insira o pendrive USB.
+3. Pressione e **mantenha pressionado** o botão reset.
+4. Ligue a box e continue segurando por aproximadamente **7 segundos**.
+5. Se tudo estiver correto, o Armbian iniciará com kernel mainline — sem nenhum blob u-boot secundário.
+
+---
 
 ## Dispositivos Suportados
 
@@ -72,161 +172,158 @@ rootdev=UUID=92139c84-3871-41d7-a3f2-e8a943cbfa87
 **❓ Não Testado:**
 - S905W2: Provavelmente compatível mas não testado (não suportado atualmente pelo kernel do Armbian)
 
-Todos os arquivos usados e arquivos de origem podem ser encontrados no [Github](https://github.com/projetotvbox/amlogic-bootscripts-Armbian).
+Todos os arquivos e fontes estão disponíveis no [Github](https://github.com/projetotvbox/amlogic-bootscripts-Armbian).
 
 ---
 
-## Avançado - Personalização do Bootloader
+## Solução de Problemas Avançada — Modificação do Bootloader
 
-### ⚠️ Aviso Legal & Pré-requisitos
+> ⚠️ **Esta seção é para casos onde os scripts simplesmente não funcionam.** Se o método principal funcionou, você não precisa disso.
+>
+> Alguns dispositivos possuem bootloaders de fábrica que não suportam a execução de scripts externos por padrão. Nesses casos, é possível modificar as variáveis do bootloader diretamente via console serial para forçar esse suporte. Trata-se de um procedimento de baixo nível, com risco real de brick. **Prossiga apenas se souber o que está fazendo.**
 
-**AVISO:** Modificar o bootloader do seu dispositivo pode resultar em um dispositivo travado (brick). Qualquer dano ou perda de dados é de sua responsabilidade exclusiva. Proceda apenas se entender os riscos.
+### Pré-requisitos
 
-**Pré-requisitos Obrigatórios:**
+- **Sistema ARM Linux funcional:** Armbian, Debian ou Ubuntu ARM rodando a partir de USB/SD no dispositivo — necessário para acessar a eMMC e o shell.
+- **Adaptador Serial TTL (3.3V UART):** ⚠️ **Use apenas 3.3V. 5V danificará o dispositivo.** Requer solda nos pads TX/RX/GND da placa.
+- **Software de terminal serial:** PuTTY, Minicom ou picocom.
 
-- **Sistema ARM Linux Funcional:** Armbian, Debian ou Ubuntu ARM rodando a partir de USB/SD no seu dispositivo Amlogic
-  - Necessário para acessar a eMMC interna e executar comandos de análise/extração
-  - O sistema deve inicializar corretamente para fornecer acesso shell
-  
-- **Adaptador Serial TTL (3.3V UART):** Adaptador série USB de alta qualidade
-  - ⚠️ **CRÍTICO:** Use apenas 3.3V. 5V danificará o dispositivo!
-  - Requer habilidades de soldagem para conectar TX/RX/GND na placa
-  
-- **Software de Terminal Serial:** PuTTY, Minicom ou picocom
-  
-- **Paciência e Metodologia:** Siga cada passo cuidadosamente
-
-### 🔒 Obrigatório: Faça Backup da sua eMMC
-
-Antes de QUALQUER experimento, crie um backup completo:
+### 🔒 Faça Backup da eMMC Antes de Qualquer Coisa
 
 ```bash
-# Backup bit-a-bit com compressão (economiza espaço)
+# Backup com compressão (um backup de 16GB vira 2-4GB)
 sudo dd if=/dev/mmcblkX bs=1M status=progress | gzip -c > backup_emmc_full.img.gz
 
-# Para restaurar em caso de desastre:
+# Para restaurar:
 # gunzip -c backup_emmc_full.img.gz | sudo dd of=/dev/mmcblkX bs=1M status=progress
 ```
 
-Por que gzip? Um backup de 16GB se torna 2-4GB, economizando espaço significativo.
+### Verificando o Suporte do Bootloader
 
-### Verificando o Suporte do Bootloader do Fabricante
+#### Passo 1: Conectar o cabo serial
+Solde TX, RX e GND nos pads UART do dispositivo e conecte ao PC.
 
-#### Passo 1: Conectar Cabo Serial
-Solde TX, RX, GND nos pads UART do seu dispositivo e conecte ao seu PC.
-
-#### Passo 2: Abrir Console Serial
-Usando picocom como exemplo:
+#### Passo 2: Abrir o console serial
 
 ```bash
-# Encontre seu dispositivo serial
 ls -la /dev/ttyUSB*
 
-# Conecte a 115200 baud (ajuste se diferente)
 picocom -b 115200 /dev/ttyUSB0
-
-# Ou com minicom:
+# ou:
 minicom -D /dev/ttyUSB0 -b 115200
 ```
 
-#### Passo 3: Interromper U-Boot
-Ligue o dispositivo e pressione rapidamente `Ctrl+C` ou `Enter` para interromper o U-Boot antes de inicializar.
+#### Passo 3: Interromper o U-Boot
+Ligue o dispositivo e pressione rapidamente `Ctrl+C` ou `Enter` para interromper o U-Boot antes de ele inicializar.
 
-#### Passo 4: Verificar Variáveis do Bootloader
-Uma vez no console do U-Boot, digite:
+#### Passo 4: Verificar as variáveis do bootloader
 
 ```bash
 printenv bootcmd
 ```
 
-A saída esperada deve ser semelhante a:
+Saída esperada:
 ```
 bootcmd=run start_autoscript; run storeboot
 ```
 
-Verifique as variáveis relacionadas:
+Verifique também:
 ```bash
 printenv start_usb_autoscript
 printenv start_mmc_autoscript
 printenv start_emmc_autoscript
 ```
 
-**Nota:** Os nomes das variáveis podem ser ligeiramente diferentes. Procure por padrões como `start_*_autoscript`.
+> Os nomes das variáveis podem variar. Procure por padrões como `start_*_autoscript`.
 
-### Modificando Bootloader do Fabricante (Apenas Usuários Avançados)
+### Modificando as Variáveis
 
-Se seu bootloader é gravável e você quer forçar o suporte a scripts, execute esses comandos no console do U-Boot:
+Se o bootloader for gravável, execute no console do U-Boot:
 
 ```bash
 setenv start_autoscript 'if mmcinfo; then run start_mmc_autoscript; fi; if usb start; then run start_usb_autoscript; fi; run start_emmc_autoscript'
 setenv start_emmc_autoscript 'if fatload mmc 1 1020000 emmc_autoscript; then setenv devtype "mmc"; setenv devnum 1; autoscr 1020000; fi;'
 setenv start_mmc_autoscript 'if fatload mmc 0 1020000 s905_autoscript; then setenv devtype "mmc"; setenv devnum 0; autoscr 1020000; fi;'
 setenv start_usb_autoscript 'for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 s905_autoscript; then setenv devtype "usb"; setenv devnum 0; autoscr 1020000; fi; done'
+setenv upgrade_step 2
 setenv bootdelay 1
 ```
 
-#### ⚠️ CRÍTICO: Configurando bootcmd - Preserve Seu Comando Original
+#### ⚠️ Configurando o `bootcmd` — Preserve o Comando Original
 
-**NÃO use simplesmente `run start_autoscript; run storeboot`** - Isto é genérico e pode danificar seu dispositivo se seu bootcmd original foi diferente!
+**Não use simplesmente `run start_autoscript; run storeboot`** sem antes verificar o seu `bootcmd` original. Um comando genérico pode danificar seu dispositivo se o original for diferente.
 
-**Abordagem passo-a-passo:**
-
-1. **Primeiro, ANOTE seu bootcmd original:**
+1. **Anote o `bootcmd` original:**
    ```bash
    printenv bootcmd
-   # Anote a saída EXATA aqui:
-   # _________________________________
    ```
 
-2. **Então configure bootcmd para preservá-lo:**
+2. **Configure preservando o original:**
    ```bash
-   setenv bootcmd 'run start_autoscript; [COLE SEU BOOTCMD ORIGINAL AQUI]'
+   setenv bootcmd 'run start_autoscript; [SEU BOOTCMD ORIGINAL AQUI]'
    ```
 
-**Exemplos de dispositivos reais:**
+**Exemplos reais:**
 
-**Exemplo 1 - Box Amlogic Genérica:**
 ```bash
-# Original era:
-# bootcmd=run storeboot
-
-# Então você faz:
+# Exemplo 1 — Box Amlogic genérica (original: run storeboot)
 setenv bootcmd 'run start_autoscript; run storeboot'
-```
 
-**Exemplo 2 - Fabricante Diferente (HTV H8):**
-```bash
-# Original era:
-# bootcmd=run start_emmc_autoscript; run storeboot
-
-# Então você faz:
+# Exemplo 2 — HTV H8 (original: run start_emmc_autoscript; run storeboot)
 setenv bootcmd 'run start_autoscript; run start_emmc_autoscript; run storeboot'
-```
 
-**Exemplo 3 - Bootcmd Complexo:**
-```bash
-# Original era:
-# bootcmd=if test -n ${upgrade_step}; then echo BOOT_STEP equals $upgrade_step; setenv upgrade_step; fi; run storeboot
-
-# Então você faz:
+# Exemplo 3 — bootcmd complexo
+# Original: if test -n ${upgrade_step}; then echo BOOT_STEP equals $upgrade_step; setenv upgrade_step; fi; run storeboot
 setenv bootcmd 'run start_autoscript; if test -n ${upgrade_step}; then echo BOOT_STEP equals $upgrade_step; setenv upgrade_step; fi; run storeboot'
 ```
 
-#### Passo Final - Salve e Verifique as Alterações
+#### Salve e verifique
 
 ```bash
 saveenv
 reset
 ```
 
-Interrompa o U-Boot novamente e verifique se as variáveis foram salvas:
+Interrompa o U-Boot novamente e confirme:
 
 ```bash
 printenv bootcmd
 ```
 
-**Indicadores de Sucesso:**
-- Variáveis foram salvas → Bootloader é gravável e as modificações devem funcionar
-- Variáveis não foram salvas → Bootloader somente leitura; não é possível aplicar este método
+- **Variáveis salvas** → bootloader gravável, modificações aplicadas com sucesso.
+- **Variáveis não salvas** → bootloader somente leitura; este método não é aplicável.
+
+---
+
+## Como Funciona Internamente
+
+Para quem quer entender o que acontece por baixo dos panos — o papel de cada arquivo na cadeia de boot.
+
+### `aml_autoscript` — O Injetor de Nova Rota
+
+Executado **apenas uma vez**, no momento em que você força o modo de recuperação (segurando o botão reset ao ligar). Ele reescreve as variáveis de ambiente do U-Boot de fábrica via `saveenv`, estabelecendo uma nova ordem de boot: SD card → USB → eMMC, redirecionando o fluxo para os scripts abaixo.
+
+### `s905_autoscript` — O Carregador de Mídia Externa
+
+Executado toda vez que a placa liga com pendrive ou SD card conectado. Lê o `armbianEnv.txt`, carrega o Kernel, DTB e Initrd para a RAM, prepara os `bootargs` e passa o controle para o Kernel inicializar o sistema.
+
+### `emmc_autoscript` — O Carregador da Memória Interna
+
+Idêntico ao anterior em função, mas acionado quando não há pendrive ou SD inicializável conectado. Aponta para o endereço físico da eMMC (`devnum 1`) e monta a raiz do sistema a partir da partição interna.
+
+### `gxl-fixup.scr` — O Hack do Cabeçalho Falso *(apenas GXBB/GXL)*
+
+Os bootloaders de fábrica das famílias GXBB (S905) e GXL (S905X/W/L) só aceitam kernels no formato legado `uImage` (comando `bootm`). O Armbian moderno usa o formato `Image` (comando `booti`), que esses bootloaders simplesmente recusam.
+
+Em vez de compilar kernels legados, o script resolve isso em tempo de execução:
+
+1. Substitui a rotina de boot padrão (`cmd_do_boot`).
+2. Usa `mw.l` para escrever diretamente na memória um cabeçalho u-boot legado **falso** no endereço `0x1ffffc0`, logo antes do Kernel.
+3. Injeta um CRC válido no cabeçalho (`cmd_hdr_crc`).
+4. Dispara `bootm` — o bootloader vê o cabeçalho falso, acredita estar lidando com um `uImage` legítimo e inicializa o kernel moderno normalmente.
+
+> **Restrição:** o arquivo do Kernel não pode ultrapassar **32MB**.
+
+É por isso que o Passo 6 instrui a descomentar `soc_fixup=gxl-` nesses SoCs: sem esse hack, o bootloader travaria na inicialização.
 
 ---
