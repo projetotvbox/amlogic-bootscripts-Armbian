@@ -233,6 +233,18 @@ Por padrão, o bootlogo é exibido apenas via HDMI. Se a sua box tiver saída CV
 2. [Recompile o script](#recompilando-o-script).
 3. Copie o novo `aml_autoscript` para a partição de boot e execute-o novamente na box.
 
+> ⚠️ **Padrão de vídeo do CVBS.** O `aml_autoscript` vem com o modo definido como `480cvbs` (525 linhas / 60 Hz), o formato aceito no Brasil e nos Estados Unidos:
+>
+> ```bash
+> setenv cvbsmode 480cvbs
+> ```
+>
+> Se a sua TV usar um padrão de 625 linhas / 50 Hz (comum na Europa, por exemplo), altere para `576cvbs`, recompile e execute o script novamente:
+>
+> ```bash
+> setenv cvbsmode 576cvbs
+> ```
+
 ---
 
 ### Reutilizando outro `aml_autoscript`

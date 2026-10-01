@@ -233,6 +233,18 @@ By default, the bootlogo is shown over HDMI only. If your box has a CVBS (compos
 2. [Recompile the script](#recompiling-the-script).
 3. Copy the new `aml_autoscript` to the boot partition and run it again on the box.
 
+> ⚠️ **CVBS video standard.** `aml_autoscript` ships with the mode set to `480cvbs` (525 lines / 60 Hz), the format accepted in Brazil and the United States:
+>
+> ```bash
+> setenv cvbsmode 480cvbs
+> ```
+>
+> If your TV uses a 625-line / 50 Hz standard (common in Europe, for example), change it to `576cvbs`, recompile, and run the script again:
+>
+> ```bash
+> setenv cvbsmode 576cvbs
+> ```
+
 ---
 
 ### Reusing another `aml_autoscript`
