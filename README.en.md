@@ -5,8 +5,9 @@
 ## Table of Contents
 - [Overview](#overview)
 - [Setup](#setup)
+- [Customizing `aml_autoscript`](#customizing-aml_autoscript)
 - [Supported Devices](#supported-devices)
-- [Advanced Troubleshooting — Bootloader Modification](#advanced-troubleshooting--bootloader-modification)
+- [Troubleshooting — Running `aml_autoscript` Manually](#troubleshooting--running-aml_autoscript-manually)
 - [How It Works Internally](#how-it-works-internally)
 
 ---
@@ -16,6 +17,8 @@
 Armbian images for Amlogic TV Boxes normally rely on secondary u-boot blobs to boot the mainline kernel. In practice, these are unnecessary: the factory u-boot that came with your box is already capable of doing this on its own. All it takes are a few modifications to the Armbian boot scripts.
 
 > **Prerequisite:** the vendor u-boot must be running on eMMC. If your box was reflashed with a different bootloader, restore the stock Android image using the [Amlogic USB Burning Tool](https://androidmtk.com/download-amlogic-usb-burning-tool) before continuing.
+
+> **Mainline focus:** this project's scripts remove the Android variables from U-Boot. If you want to keep using Android, use the original autoscripts by devmfc, which this project is a fork of. Details in [Customizing `aml_autoscript`](#customizing-aml_autoscript).
 
 ---
 
@@ -159,6 +162,98 @@ soc_fixup=gxl-
 4. Power on the box and keep holding for approximately **7 seconds**.
 5. If everything is correct, Armbian will boot with a mainline kernel — without any secondary u-boot blobs.
 
+> The first time, holding reset is what makes `aml_autoscript` run and write the new variables. After that, the box looks for SD → USB → eMMC on its own. If reset has no effect, see [Troubleshooting](#troubleshooting--running-aml_autoscript-manually).
+
+---
+
+## Customizing `aml_autoscript`
+
+This project's `aml_autoscript` is a **fork of devmfc's original code, focused on mainline Linux**. Besides setting the U-Boot variables needed to boot Armbian, it removes dozens of variables that only exist for Android (recovery, burning, Dolby Vision, A/B slots, etc.). This keeps the U-Boot environment clean, making debugging and understanding the code much easier.
+
+> ⚠️ **Android no longer boots from eMMC.** `bootcmd` becomes just `run start_autoscript` and the `storeboot` variable is removed. If you want to keep using Android, use the original autoscripts by **devmfc**. To go back to Android after running this script, restore the stock image with the [Amlogic USB Burning Tool](https://androidmtk.com/download-amlogic-usb-burning-tool).
+
+The editable source is `aml_autoscript.command`. The `aml_autoscript` file (no extension) is the compiled version, the one that goes on the boot partition.
+
+> **Any change only takes effect after you recompile the script and run it again on the box** (by holding reset, or manually via serial console — see the troubleshooting section). The variables are only written by `saveenv` at the end of the run.
+
+### Recompiling the script
+
+```bash
+sudo apt install u-boot-tools   # provides mkimage (Debian/Ubuntu)
+mkimage -C none -A arm -T script -d aml_autoscript.command aml_autoscript
+```
+
+Copy the generated `aml_autoscript` to the FAT boot partition, overwriting the existing one.
+
+---
+
+### U-Boot bootlogo on mainline Linux
+
+`aml_autoscript` injects a bootlogo function into U-Boot, something normally only Android provides. The logo shows as soon as the box powers on, before the kernel loads.
+
+All you need to do is place a file named **`bootlogo.bmp`** on **partition 1 (the FAT boot partition)** of the media. U-Boot looks for the file in this order and uses the first one found:
+
+1. USB drive (ports 0 to 3)
+2. SD card
+3. eMMC
+
+If no file is found, the box simply boots without a logo. To use a different name, change the `bootlogo_filename` variable in `aml_autoscript.command` (without the `.bmp` extension) and recompile.
+
+**Accepted format**
+
+The box's U-Boot only displays BMPs in a specific format. In most cases it is this one (RGB565, 16 bits):
+
+```bash
+file bootlogo.bmp
+# bootlogo.bmp: PC bitmap, Windows 3.x format, 320 x 388 x 16, 3 compression, image size 248320, cbSize 248386, bits offset 66
+```
+
+**Converting a PNG or JPEG to the correct format**
+
+```bash
+ffmpeg -i bootlogo.png -pix_fmt rgb565 -compression_level 0 bootlogo.bmp
+```
+
+> ⚠️ **This format is the most common, not a guaranteed standard.** Each U-Boot may have its own quirks (resolution, color depth, etc.). If the logo does not show or looks distorted, you will need to adapt the conversion to your case — there is no single solution that covers every box.
+
+---
+
+### Showing the bootlogo on CVBS output
+
+By default, the bootlogo is shown over HDMI only. If your box has a CVBS (composite video) output, you can enable it:
+
+1. In `aml_autoscript.command`, change:
+   ```bash
+   setenv cvbs_boot 0
+   ```
+   to:
+   ```bash
+   setenv cvbs_boot 1
+   ```
+2. [Recompile the script](#recompiling-the-script).
+3. Copy the new `aml_autoscript` to the boot partition and run it again on the box.
+
+---
+
+### Reusing another `aml_autoscript`
+
+By default, this feature comes **disabled**: U-Boot no longer looks for a new `aml_autoscript` at power-on, which keeps boot simpler and more predictable.
+
+To re-enable it, edit `aml_autoscript.command`: **uncomment** the four lines in the indicated block and **comment out** the `setenv update` line right below it.
+
+```bash
+# Uncomment these lines:
+setenv check_update_button ${upgrade_key}
+setenv update 'run load_aml_autoscript'
+setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
+setenv bootcmd 'run check_update_button; run start_autoscript'
+
+# And comment out this one (further down in the file):
+#setenv update
+```
+
+With this, `bootcmd` checks the reset button again and `load_aml_autoscript` looks for an `aml_autoscript` on SD and USB. Recompile and run the script to apply.
+
 ---
 
 ## Supported Devices
@@ -176,19 +271,21 @@ All files and source files are available on [Github](https://github.com/projetot
 
 ---
 
-## Advanced Troubleshooting — Bootloader Modification
+## Troubleshooting — Running `aml_autoscript` Manually
 
-> ⚠️ **This section is for cases where the scripts simply do not work.** If the main method worked, you do not need this.
+> ⚠️ **This section is for when holding the reset button does not run `aml_autoscript`.** If the main method worked, you do not need this.
 >
-> Some devices have factory bootloaders that do not support running external scripts by default. In those cases, it is possible to modify the bootloader variables directly via serial console to force that support. This is a low-level procedure with a real risk of bricking the device. **Proceed only if you know what you are doing.**
+> You no longer need to type U-Boot variables by hand: `aml_autoscript` already does all the configuration. The only thing left is running it manually by interrupting U-Boot over the serial console.
 
 ### Prerequisites
 
-- **Functional ARM Linux system:** Armbian, Debian, or Ubuntu ARM running from USB/SD on the Amlogic device — required to access eMMC and the shell.
 - **Serial TTL adapter (3.3V UART):** ⚠️ **Use 3.3V only. 5V will damage the device.** Requires soldering TX/RX/GND pads on the board.
 - **Serial terminal software:** PuTTY, Minicom, or picocom.
+- **A USB drive formatted as FAT32** with the `aml_autoscript` file in its root.
 
 ### 🔒 Back Up eMMC Before Anything Else
+
+`aml_autoscript` wipes the factory U-Boot environment (`defenv`) and removes the Android variables. If there is any chance you will want to go back, back up first (from an ARM Linux system running from the USB drive):
 
 ```bash
 # Compressed backup (a 16GB backup becomes 2-4GB)
@@ -198,12 +295,11 @@ sudo dd if=/dev/mmcblkX bs=1M status=progress | gzip -c > backup_emmc_full.img.g
 # gunzip -c backup_emmc_full.img.gz | sudo dd of=/dev/mmcblkX bs=1M status=progress
 ```
 
-### Checking Bootloader Support
+### Step 1 — Connect the serial cable
 
-#### Step 1: Connect the serial cable
 Solder TX, RX, and GND to the device's UART pads and connect to your PC.
 
-#### Step 2: Open the serial console
+### Step 2 — Open the serial console
 
 ```bash
 ls -la /dev/ttyUSB*
@@ -213,85 +309,23 @@ picocom -b 115200 /dev/ttyUSB0
 minicom -D /dev/ttyUSB0 -b 115200
 ```
 
-#### Step 3: Interrupt U-Boot
-Power on the device and quickly press `Ctrl+C` or `Enter` to interrupt U-Boot before it boots.
+### Step 3 — Interrupt U-Boot
 
-#### Step 4: Check bootloader variables
+With the USB drive connected, power on the device and quickly press `Ctrl+C` or `Enter` to interrupt U-Boot before it boots.
 
-```bash
-printenv bootcmd
-```
+### Step 4 — Run `aml_autoscript`
 
-Expected output:
-```
-bootcmd=run start_autoscript; run storeboot
-```
-
-Also check:
-```bash
-printenv start_usb_autoscript
-printenv start_mmc_autoscript
-printenv start_emmc_autoscript
-```
-
-> Variable names may differ slightly. Look for patterns like `start_*_autoscript`.
-
-### Modifying the Variables
-
-If the bootloader is writable, run in the U-Boot console:
+In the U-Boot console, run:
 
 ```bash
-setenv start_autoscript 'if mmcinfo; then run start_mmc_autoscript; fi; if usb start; then run start_usb_autoscript; fi; run start_emmc_autoscript'
-setenv start_emmc_autoscript 'if fatload mmc 1 1020000 emmc_autoscript; then setenv devtype "mmc"; setenv devnum 1; autoscr 1020000; fi;'
-setenv start_mmc_autoscript 'if fatload mmc 0 1020000 s905_autoscript; then setenv devtype "mmc"; setenv devnum 0; autoscr 1020000; fi;'
-setenv start_usb_autoscript 'for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 s905_autoscript; then setenv devtype "usb"; setenv devnum 0; autoscr 1020000; fi; done'
-setenv upgrade_step 2
-setenv bootdelay 1
+usb start
+fatload usb 0 $loadaddr aml_autoscript
+autoscr $loadaddr
 ```
 
-#### ⚠️ Setting `bootcmd` — Preserve the Original Command
+> ⚠️ **Keep only 1 USB drive connected** during this procedure. The command above reads the first USB device (`0`).
 
-**Do not simply use `run start_autoscript; run storeboot`** without checking your original `bootcmd` first. A generic command may brick your device if the original was different.
-
-1. **Write down the original `bootcmd`:**
-   ```bash
-   printenv bootcmd
-   ```
-
-2. **Set it while preserving the original:**
-   ```bash
-   setenv bootcmd 'run start_autoscript; [YOUR ORIGINAL BOOTCMD HERE]'
-   ```
-
-**Real device examples:**
-
-```bash
-# Example 1 — Generic Amlogic box (original: run storeboot)
-setenv bootcmd 'run start_autoscript; run storeboot'
-
-# Example 2 — HTV H8 (original: run start_emmc_autoscript; run storeboot)
-setenv bootcmd 'run start_autoscript; run start_emmc_autoscript; run storeboot'
-
-# Example 3 — Complex bootcmd
-# Original: if test -n ${upgrade_step}; then echo BOOT_STEP equals $upgrade_step; setenv upgrade_step; fi; run storeboot
-setenv bootcmd 'run start_autoscript; if test -n ${upgrade_step}; then echo BOOT_STEP equals $upgrade_step; setenv upgrade_step; fi; run storeboot'
-```
-
-#### Save and verify
-
-```bash
-saveenv
-reset
-```
-
-Interrupt U-Boot again and confirm:
-
-```bash
-printenv bootcmd
-```
-
-- **Variables saved** → writable bootloader, modifications applied successfully.
-- **Variables not saved** → read-only bootloader; this method cannot be applied.
+The script rewrites the variables, runs `saveenv`, and ends with `run start_autoscript`, booting Armbian right after. From then on, you will no longer need the serial console or the reset button.
 
 ---
 
@@ -301,7 +335,15 @@ For those who want to understand what happens under the hood — the role of eac
 
 ### `aml_autoscript` — The Route Injector
 
-Runs **only once**, at the moment you force recovery mode (by holding the reset button while powering on). It rewrites the factory U-Boot environment variables via `saveenv`, establishing a new boot order: SD card → USB → eMMC, redirecting the flow to the scripts below.
+Runs **only once** per installation, at the moment you force recovery mode (by holding the reset button while powering on) or run it manually over the serial console. Since the variables are written with `saveenv`, the result persists across later boots. In order, it:
+
+1. **Restores the factory environment** (`defenv`, `env default -a`, and `saveenv`), starting from a clean base.
+2. **Defines the new boot route** (`start_autoscript`): SD card → USB → eMMC, redirecting the flow to the scripts below. `bootcmd` becomes just `run start_autoscript`, without Android's `storeboot`.
+3. **Sets up the bootlogo and video output** (`init_display`, run from `preboot`): picks the output mode (HDMI or CVBS), looks for `bootlogo.bmp` on USB, SD, and eMMC, and displays it.
+4. **Removes the Android variables** (recovery, burning, Dolby Vision, networking, A/B slots, etc.), keeping the environment lean.
+5. **Saves everything** with `saveenv` and calls `run start_autoscript` to start booting immediately.
+
+Optionally, you can keep the ability to load another `aml_autoscript` on future boots, as explained in [Reusing another `aml_autoscript`](#reusing-another-aml_autoscript).
 
 ### `s905_autoscript` — The External Media Loader
 
@@ -327,3 +369,5 @@ Instead of compiling legacy-format kernels, the script solves this at runtime:
 This is why Step 6 instructs you to uncomment `soc_fixup=gxl-` for these SoCs: without this hack, the original bootloader would stall at boot.
 
 ---
+
+Feito com 🐧 no IFSP Salto · Tecnologia a serviço da educação pública

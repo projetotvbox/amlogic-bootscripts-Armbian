@@ -1,14 +1,133 @@
-if printenv bootfromsd; then exit; else setenv ab 0; fi;
-setenv bootcmd 'run start_autoscript; run storeboot'
-setenv start_autoscript 'if mmcinfo; then run start_mmc_autoscript; fi; if usb start; then run start_usb_autoscript; fi; run start_emmc_autoscript'
-setenv start_emmc_autoscript 'if fatload mmc 1 1020000 emmc_autoscript; then setenv devtype "mmc"; setenv devnum 1; autoscr 1020000; fi;'
-setenv start_mmc_autoscript 'if fatload mmc 0 1020000 s905_autoscript; then setenv devtype "mmc"; setenv devnum 0; autoscr 1020000; fi;'
-setenv start_usb_autoscript 'for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 s905_autoscript; then setenv devtype "usb"; setenv devnum 0; autoscr 1020000; fi; done'
-setenv upgrade_step 2
+# Fallbacks
+defenv
+env default -a
 saveenv
-sleep 1
 
-run bootcmd
+setenv start_autoscript 'if mmcinfo; then run start_mmc_autoscript; fi; if usb start; then run start_usb_autoscript; fi; run start_emmc_autoscript'
+
+setenv start_emmc_autoscript 'if fatload mmc 1 1020000 emmc_autoscript; then setenv devtype "mmc"; setenv devnum 1; autoscr 1020000; fi;'
+
+setenv start_mmc_autoscript 'if fatload mmc 0 1020000 s905_autoscript; then setenv devtype "mmc"; setenv devnum 0; autoscr 1020000; fi;'
+
+setenv start_usb_autoscript 'for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 s905_autoscript; then setenv devtype "usb"; setenv devnum ${usbdev}; autoscr 1020000; fi; done'
+
+setenv bootcmd 'run start_autoscript'
+setenv bootdelay 1
+
+setenv cvbsmode 480cvbs
+setenv cvbs_drv 0
+
+setenv bootlogo_filename 'bootlogo'
+setenv logo_usb_init 'usb start'
+setenv logo_try_usb 'for usbdev in 0 1 2 3; do if test ${logo_ok} = 0; then if fatload usb ${usbdev} $loadaddr ${bootlogo_filename}.bmp; then setenv logo_ok 1; fi; fi; done'
+setenv logo_try_sd 'mmcinfo; fatload mmc 0:1 $loadaddr ${bootlogo_filename}.bmp && setenv logo_ok 1'
+setenv logo_try_emmc 'fatload mmc 1:1 $loadaddr ${bootlogo_filename}.bmp && setenv logo_ok 1'
+
+setenv cvbs_boot 0
+
+setenv select_outputmode 'hdmitx hpd; if test "${outputmode}" = ""; then setenv outputmode 1080p60hz; else if test "${outputmode}" = "${cvbsmode}"; then test "${cvbs_boot}" = "1" || setenv outputmode ${hdmimode}; fi; fi'
+
+setenv apply_outputmode 'if test "${outputmode}" = "${hdmimode}"; then hdmitx output ${outputmode}; fi; vout output ${outputmode}'
+
+setenv logo_show 'test ${logo_ok} = 1 && osd open && osd clear && bmp display $loadaddr && bmp scale'
+
+setenv init_display 'run select_outputmode; run apply_outputmode; setenv logo_ok 0; run logo_usb_init; run logo_try_usb; test ${logo_ok} = 1 || run logo_try_sd; test ${logo_ok} = 1 || run logo_try_emmc; run logo_show'
+
+setenv preboot 'run init_display'
+
+##################################################################################################################################
+
+#### Se quiser manter a funcionalidade de usar um aml_autoscript, descomente as linhas abaixo  e comente a linha que tem somente setenv update
+#### If you want to keep the ability to use an aml_autoscript, uncomment the lines below and comment out the line that only has setenv update
+
+#setenv check_update_button ${upgrade_key}
+#setenv update 'run load_aml_autoscript'
+#setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
+#setenv bootcmd 'run check_update_button; run start_autoscript'
+
+##################################################################################################################################
+
+setenv update
+
+##################################################################################################################################
+
+setenv EnableSelinux
+setenv initargs
+setenv storeargs
+setenv cmdline_keys
+setenv factory_reset_poweroff_protect
+setenv wipe_cache
+setenv wipe_data
+setenv recovery_from_flash
+setenv recovery_offset
+setenv recovery_part
+setenv upgrade_check
+setenv upgrade_key
+setenv upgrade_sadckey
+setenv upgrade_step
+setenv sdc_burning
+setenv sdcburncfg
+setenv usb_burning
+setenv try_auto_burn
+setenv jtag
+setenv firstboot
+setenv ipaddr
+setenv gatewayip
+setenv netmask
+setenv serverip
+setenv hostname
+setenv ethaddr
+setenv ip
+setenv ethact
+setenv storeboot
+setenv switch_bootmode
+setenv recovery_from_sdcard
+setenv recovery_from_udisk
+setenv recovery_from_fat_dev
+setenv check_udisk_update
+setenv storage_param
+setenv detect_stbsn
+setenv check_result
+setenv Irq_check_en
+setenv bcb_cmd
+setenv common_dtb_load
+setenv get_os_type
+setenv load_bmp_logo
+setenv fs_typef
+setenv fatload_dev
+setenv dv_fw_addr
+setenv dv_fw_dir
+setenv dv_fw_dir_odm_ext
+setenv dv_fw_dir_vendor
+setenv stbsn
+setenv vendor_boot_part
+setenv colorattribute
+setenv dolby_status
+setenv dolby_vision_on
+setenv hdr_policy
+setenv frac_rate_policy
+setenv osd_reverse
+setenv video_reverse
+setenv panel_type
+setenv board_logo_part
+setenv os_ident_addr
+setenv lock
+setenv loglevel
+setenv fs_type
+setenv active_slot
+setenv boot_part
+setenv loadaddr_rtos
+setenv otg_device
+setenv silent
+setenv auto_upgrade
+setenv board_defined_bootup
+setenv irremote_update
+setenv reboot_mode
+setenv reboot_mode_android
+
+saveenv
+
+run start_autoscript
 
 # Recompile with:
 # mkimage -C none -A arm -T script -d aml_autoscript.command aml_autoscript
