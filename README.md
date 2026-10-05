@@ -176,6 +176,19 @@ O código-fonte editável é o `aml_autoscript.command`. O arquivo `aml_autoscri
 
 > **Qualquer alteração só tem efeito depois de recompilar o script e executá-lo novamente na box** (segurando o reset, ou manualmente via console serial — veja a seção de solução de problemas). As variáveis só são gravadas pelo `saveenv` no final da execução.
 
+### Fluxo para testar suas alterações
+
+1. Edite o `aml_autoscript.command`.
+2. [Recompile o script](#recompilando-o-script).
+3. Copie o `aml_autoscript` gerado para a raiz da partição FAT do pendrive.
+4. Execute-o na box, de uma das duas formas:
+   - **Botão reset**, como no [Passo 7](#passo-7--inicialize-pelo-pendrive). Na primeira vez isso funciona com o U-Boot de fábrica; nas seguintes, só funciona se você tiver [reativado o botão](#reutilizando-outro-aml_autoscript).
+   - **Manualmente, pelo console serial**, como em [Executando o `aml_autoscript` Manualmente](#solução-de-problemas--executando-o-aml_autoscript-manualmente).
+
+> 💡 **Dica:** enquanto estiver criando ou ajustando um `aml_autoscript` customizado, **mantenha o botão reset habilitado**. Assim você pode testar sem precisar do console serial a cada tentativa. Só quando tiver a versão final, e se quiser, desabilite o botão.
+
+---
+
 ### Recompilando o script
 
 ```bash
@@ -184,6 +197,29 @@ mkimage -C none -A arm -T script -d aml_autoscript.command aml_autoscript
 ```
 
 Copie o `aml_autoscript` gerado para a partição FAT de boot, sobrescrevendo o existente.
+
+---
+
+### Reutilizando outro `aml_autoscript`
+
+Por padrão, essa funcionalidade vem **desabilitada**: o U-Boot não procura mais um novo `aml_autoscript` ao ligar, o que mantém o boot mais simples e previsível.
+
+> 💡 **Se você vai customizar o `aml_autoscript`, ative esta opção desde a primeira versão customizada** e só a desabilite quando tiver a versão final. Para desabilitar de volta, recompile com essas linhas comentadas e com a linha `setenv update` ativa (o padrão do repositório).
+
+Para reativá-la, edite o `aml_autoscript.command`: **descomente** as quatro linhas do bloco indicado e **comente** a linha `setenv update` que fica logo abaixo dele.
+
+```bash
+# Descomente estas linhas:
+setenv check_update_button ${upgrade_key}
+setenv update 'run load_aml_autoscript'
+setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
+setenv bootcmd 'run check_update_button; run start_autoscript'
+
+# E comente esta (mais abaixo no arquivo):
+#setenv update
+```
+
+Com isso, o `bootcmd` volta a verificar o botão de reset e o `load_aml_autoscript` procura um `aml_autoscript` no SD e no USB. Recompile e execute o script para aplicar.
 
 ---
 
@@ -247,24 +283,52 @@ Por padrão, o bootlogo é exibido apenas via HDMI. Se a sua box tiver saída CV
 
 ---
 
-### Reutilizando outro `aml_autoscript`
+### Cor de fundo antes do bootlogo (tela azul ou verde)
 
-Por padrão, essa funcionalidade vem **desabilitada**: o U-Boot não procura mais um novo `aml_autoscript` ao ligar, o que mantém o boot mais simples e previsível.
+Dependendo do firmware, algumas boxes mostram uma cor de fundo entre a inicialização do vídeo e a exibição do logo, enquanto o U-Boot procura o `bootlogo.bmp`. Nos testes, o padrão (Option A) funcionou bem na **HTV H8** e na **ATV A5**. Já a **BTV B9** mostrou tela **verde** com o padrão e precisou de outra variante. E essa variante da B9, quando usada na A5, fez aparecer uma tela **azul**: o que resolve uma box pode piorar outra.
 
-Para reativá-la, edite o `aml_autoscript.command`: **descomente** as quatro linhas do bloco indicado e **comente** a linha `setenv update` que fica logo abaixo dele.
+O `aml_autoscript.command` traz quatro variações do `init_display` (opções **A**, **B**, **C** e **D**). Todas continuam executando `osd open; osd clear` antes de exibir o logo (dentro do `logo_show`). A diferença é abrir e limpar o OSD **também** antes e/ou depois do `vout`:
+
+| Opção | Quando o OSD é aberto e limpo |
+|-------|-------------------------------|
+| A *(padrão)* | Somente no `logo_show` |
+| B | Antes do `vout` |
+| C | Depois do `vout` |
+| D | Antes e depois do `vout` |
+
+> ⚠️ **Isto foi descoberto por testes empíricos, não pela análise do código dos U-Boots.** O comportamento depende do firmware de cada box: o que resolve em uma pode não mudar nada em outra. Não há uma opção que funcione em todas.
+
+Uma hipótese (não confirmada) é que o `osd clear` apenas zera o framebuffer do OSD, deixando-o transparente em vez de preto, e a cor que você vê é o fundo do pipeline de vídeo, definido pelo U-Boot do fabricante. Por isso nenhum comando de OSD resolve de forma portável.
+
+**Como escolher a opção para a sua box**
+
+1. Comece pela **Option A**, que é a padrão.
+2. Se a cor de fundo incomodar, teste **B** e depois **C**.
+3. A **D** só vale a pena se nenhuma das duas resolver, ou se o resultado variar entre boots.
+4. Se uma opção não melhorar nada, volte para a A.
+
+Para trocar, edite o `aml_autoscript.command`, deixe **somente uma** opção descomentada, [recompile](#recompilando-o-script) e execute o script novamente.
+
+**Testando uma opção antes de adotá-la**
+
+Digitar comandos longos direto no prompt do U-Boot tende a dar erro. Em vez disso, crie um autoscript de teste, por exemplo `test_autoscript.command`, com o `init_display` que você quer experimentar:
 
 ```bash
-# Descomente estas linhas:
-setenv check_update_button ${upgrade_key}
-setenv update 'run load_aml_autoscript'
-setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
-setenv bootcmd 'run check_update_button; run start_autoscript'
-
-# E comente esta (mais abaixo no arquivo):
-#setenv update
+setenv init_display '<conteúdo da opção escolhida>'
+run init_display
 ```
 
-Com isso, o `bootcmd` volta a verificar o botão de reset e o `load_aml_autoscript` procura um `aml_autoscript` no SD e no USB. Recompile e execute o script para aplicar.
+[Compile](#recompilando-o-script) o script (`mkimage -C none -A arm -T script -d test_autoscript.command test_autoscript`), copie o `test_autoscript` para a raiz do pendrive e execute de uma das duas formas:
+
+- **Manualmente, pelo console serial** (veja [Executando o `aml_autoscript` Manualmente](#solução-de-problemas--executando-o-aml_autoscript-manualmente)), trocando o nome do arquivo:
+  ```bash
+  usb start
+  fatload usb 0 $loadaddr test_autoscript
+  autoscr $loadaddr
+  ```
+- **Pelo botão reset:** o botão carrega um arquivo chamado `aml_autoscript`, então nesse caso o arquivo compilado deve ter esse nome, e o botão precisa estar habilitado (veja [Reutilizando outro `aml_autoscript`](#reutilizando-outro-aml_autoscript)).
+
+Esse teste filtra opções ruins, mas não prova que a opção é segura no `preboot`, que pode se comportar de forma diferente de um script executado depois do boot do U-Boot.
 
 ---
 
@@ -351,7 +415,7 @@ Executado **uma única vez** por instalação, no momento em que você força o 
 
 1. **Restaura o ambiente de fábrica** (`defenv`, `env default -a` e `saveenv`), partindo de uma base limpa.
 2. **Define a nova rota de boot** (`start_autoscript`): SD card → USB → eMMC, redirecionando o fluxo para os scripts abaixo. O `bootcmd` passa a ser somente `run start_autoscript`, sem o `storeboot` do Android.
-3. **Configura o bootlogo e a saída de vídeo** (`init_display`, executado no `preboot`): escolhe o modo de saída (HDMI ou CVBS), procura o `bootlogo.bmp` no USB, SD e eMMC, e o exibe.
+3. **Configura o bootlogo e a saída de vídeo** (`init_display`, executado no `preboot`): escolhe o modo de saída (HDMI ou CVBS), procura o `bootlogo.bmp` no USB, SD e eMMC, e o exibe. A posição do `osd open; osd clear` em relação ao `vout` pode ser ajustada em quatro variantes (A a D), explicadas em [Cor de fundo antes do bootlogo](#cor-de-fundo-antes-do-bootlogo-tela-azul-ou-verde).
 4. **Remove as variáveis do Android** (recovery, burning, Dolby Vision, rede, A/B slots etc.), mantendo o ambiente enxuto.
 5. **Grava tudo** com `saveenv` e chama `run start_autoscript` para iniciar o boot imediatamente.
 

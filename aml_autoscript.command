@@ -25,13 +25,42 @@ setenv logo_try_emmc 'fatload mmc 1:1 $loadaddr ${bootlogo_filename}.bmp && sete
 
 setenv cvbs_boot 0
 
-setenv select_outputmode 'hdmitx hpd; if test "${outputmode}" = ""; then setenv outputmode 1080p60hz; else if test "${outputmode}" = "${cvbsmode}"; then test "${cvbs_boot}" = "1" || setenv outputmode ${hdmimode}; fi; fi'
+setenv select_outputmode 'if hdmitx hpd; then setenv hdmi_cable 0; else setenv hdmi_cable 1; fi; if hdmitx get_preferred_mode; then echo EDID preferred mode read OK; else if test "${hdmi_cable}" = "0"; then echo INFO: hdmitx get_preferred_mode skipped, no HDMI cable connected; else echo WARNING: hdmitx get_preferred_mode error or not available on this firmware; fi; fi; if hdmitx get_parse_edid; then echo EDID parse OK; else if test "${hdmi_cable}" = "0"; then echo INFO: hdmitx get_parse_edid skipped, no HDMI cable connected; else echo WARNING: hdmitx get_parse_edid error or not available on this firmware; fi; fi; if test "${outputmode}" = ""; then setenv outputmode 1080p60hz; else if test "${outputmode}" = "${cvbsmode}"; then test "${cvbs_boot}" = "1" || setenv outputmode ${hdmimode}; fi; fi'
 
 setenv apply_outputmode 'if test "${outputmode}" = "${hdmimode}"; then hdmitx output ${outputmode}; fi; vout output ${outputmode}'
 
 setenv logo_show 'test ${logo_ok} = 1 && osd open && osd clear && bmp display $loadaddr && bmp scale'
 
+##################################################################################################################################
+#### Escolha somente UMA opcao de init_display (deixe uma descomentada e as demais comentadas).
+#### Todas as opcoes ainda executam osd open e osd clear antes de exibir o bootlogo (dentro do logo_show).
+#### A diferenca esta em abrir/limpar o OSD tambem antes e/ou depois do vout, o que pode mudar a cor de fundo mostrada
+#### enquanto o logo e procurado (por exemplo, tela azul ou verde, dependendo da TV Box).
+#### Se uma opcao nao melhorar o resultado na sua TV Box, volte para a Option A.
+
+#### Choose only ONE init_display option (leave one uncommented and the others commented out).
+#### All options still run osd open and osd clear before displaying the bootlogo (inside logo_show).
+#### The difference is whether the OSD is also opened/cleared before and/or after vout, which may change the background color
+#### shown while the logo is being searched for (for example, a blue or green screen, depending on the TV Box).
+#### If an option does not improve the result on your TV Box, go back to Option A.
+
+#### Option A (padrao / default): OSD somente no logo_show / OSD only in logo_show
+
 setenv init_display 'run select_outputmode; run apply_outputmode; setenv logo_ok 0; run logo_usb_init; run logo_try_usb; test ${logo_ok} = 1 || run logo_try_sd; test ${logo_ok} = 1 || run logo_try_emmc; run logo_show'
+
+#### Option B: OSD aberto/limpo ANTES do vout / OSD opened/cleared BEFORE vout
+
+#setenv init_display 'osd open; osd clear; run select_outputmode; run apply_outputmode; setenv logo_ok 0; run logo_usb_init; run logo_try_usb; test ${logo_ok} = 1 || run logo_try_sd; test ${logo_ok} = 1 || run logo_try_emmc; run logo_show'
+
+#### Option C: OSD aberto/limpo DEPOIS do vout / OSD opened/cleared AFTER vout
+
+#setenv init_display 'run select_outputmode; run apply_outputmode; osd open; osd clear; setenv logo_ok 0; run logo_usb_init; run logo_try_usb; test ${logo_ok} = 1 || run logo_try_sd; test ${logo_ok} = 1 || run logo_try_emmc; run logo_show'
+
+#### Option D: OSD aberto/limpo ANTES e DEPOIS do vout / OSD opened/cleared BEFORE and AFTER vout
+
+#setenv init_display 'osd open; osd clear; run select_outputmode; run apply_outputmode; osd open; osd clear; setenv logo_ok 0; run logo_usb_init; run logo_try_usb; test ${logo_ok} = 1 || run logo_try_sd; test ${logo_ok} = 1 || run logo_try_emmc; run logo_show'
+
+##################################################################################################################################
 
 setenv preboot 'run init_display'
 
@@ -124,6 +153,8 @@ setenv board_defined_bootup
 setenv irremote_update
 setenv reboot_mode
 setenv reboot_mode_android
+setenv update_sdcard
+setenv update_udisk
 
 saveenv
 

@@ -176,6 +176,19 @@ The editable source is `aml_autoscript.command`. The `aml_autoscript` file (no e
 
 > **Any change only takes effect after you recompile the script and run it again on the box** (by holding reset, or manually via serial console — see the troubleshooting section). The variables are only written by `saveenv` at the end of the run.
 
+### Workflow for testing your changes
+
+1. Edit `aml_autoscript.command`.
+2. [Recompile the script](#recompiling-the-script).
+3. Copy the generated `aml_autoscript` to the root of the USB drive's FAT partition.
+4. Run it on the box in one of two ways:
+   - **Reset button**, as in [Step 7](#step-7--boot-from-usb). The first time, this works with the factory U-Boot; afterwards, it only works if you have [re-enabled the button](#reusing-another-aml_autoscript).
+   - **Manually, over the serial console**, as in [Running `aml_autoscript` Manually](#troubleshooting--running-aml_autoscript-manually).
+
+> 💡 **Tip:** while you are creating or tweaking a custom `aml_autoscript`, **keep the reset button enabled**. That way you can test without needing the serial console on every attempt. Only once you have the final version, and if you want to, disable the button.
+
+---
+
 ### Recompiling the script
 
 ```bash
@@ -184,6 +197,29 @@ mkimage -C none -A arm -T script -d aml_autoscript.command aml_autoscript
 ```
 
 Copy the generated `aml_autoscript` to the FAT boot partition, overwriting the existing one.
+
+---
+
+### Reusing another `aml_autoscript`
+
+By default, this feature comes **disabled**: U-Boot no longer looks for a new `aml_autoscript` at power-on, which keeps boot simpler and more predictable.
+
+> 💡 **If you are going to customize `aml_autoscript`, enable this option from your first custom version** and only disable it once you have the final version. To disable it again, recompile with those lines commented out and the `setenv update` line active (the repository default).
+
+To re-enable it, edit `aml_autoscript.command`: **uncomment** the four lines in the indicated block and **comment out** the `setenv update` line right below it.
+
+```bash
+# Uncomment these lines:
+setenv check_update_button ${upgrade_key}
+setenv update 'run load_aml_autoscript'
+setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
+setenv bootcmd 'run check_update_button; run start_autoscript'
+
+# And comment out this one (further down in the file):
+#setenv update
+```
+
+With this, `bootcmd` checks the reset button again and `load_aml_autoscript` looks for an `aml_autoscript` on SD and USB. Recompile and run the script to apply.
 
 ---
 
@@ -247,24 +283,52 @@ By default, the bootlogo is shown over HDMI only. If your box has a CVBS (compos
 
 ---
 
-### Reusing another `aml_autoscript`
+### Background color before the bootlogo (blue or green screen)
 
-By default, this feature comes **disabled**: U-Boot no longer looks for a new `aml_autoscript` at power-on, which keeps boot simpler and more predictable.
+Depending on the firmware, some boxes show a background color between video initialization and the logo being displayed, while U-Boot searches for `bootlogo.bmp`. In testing, the default (Option A) worked well on the **HTV H8** and the **ATV A5**. The **BTV B9**, however, showed a **green** screen with the default and needed a different variant. And that B9 variant, when used on the A5, produced a **blue** screen: what fixes one box can make another worse.
 
-To re-enable it, edit `aml_autoscript.command`: **uncomment** the four lines in the indicated block and **comment out** the `setenv update` line right below it.
+`aml_autoscript.command` ships with four `init_display` variants (options **A**, **B**, **C**, and **D**). All of them still run `osd open; osd clear` before displaying the logo (inside `logo_show`). The difference is whether the OSD is **also** opened and cleared before and/or after `vout`:
+
+| Option | When the OSD is opened and cleared |
+|--------|------------------------------------|
+| A *(default)* | Only in `logo_show` |
+| B | Before `vout` |
+| C | After `vout` |
+| D | Before and after `vout` |
+
+> ⚠️ **This was discovered through empirical testing, not by analyzing the U-Boot source code.** Behavior depends on each box's firmware: what fixes one may change nothing on another. No single option works on every box.
+
+One (unconfirmed) hypothesis is that `osd clear` only zeroes the OSD framebuffer, leaving it transparent instead of black, and the color you see is the video pipeline's background, defined by the vendor's U-Boot. That is why no OSD command solves this portably.
+
+**How to pick the option for your box**
+
+1. Start with **Option A**, the default.
+2. If the background color bothers you, try **B** and then **C**.
+3. **D** is only worth trying if neither of the others helps, or if the result varies between boots.
+4. If an option does not improve anything, go back to A.
+
+To switch, edit `aml_autoscript.command`, leave **only one** option uncommented, [recompile](#recompiling-the-script), and run the script again.
+
+**Testing an option before adopting it**
+
+Typing long commands straight into the U-Boot prompt tends to cause errors. Instead, create a test autoscript, for example `test_autoscript.command`, containing the `init_display` you want to try:
 
 ```bash
-# Uncomment these lines:
-setenv check_update_button ${upgrade_key}
-setenv update 'run load_aml_autoscript'
-setenv load_aml_autoscript 'if mmcinfo; then if fatload mmc 0 1020000 aml_autoscript; then autoscr 1020000; fi; fi; if usb start; then for usbdev in 0 1 2 3; do if fatload usb ${usbdev} 1020000 aml_autoscript; then autoscr 1020000; fi; done; fi'
-setenv bootcmd 'run check_update_button; run start_autoscript'
-
-# And comment out this one (further down in the file):
-#setenv update
+setenv init_display '<content of the chosen option>'
+run init_display
 ```
 
-With this, `bootcmd` checks the reset button again and `load_aml_autoscript` looks for an `aml_autoscript` on SD and USB. Recompile and run the script to apply.
+[Compile](#recompiling-the-script) the script (`mkimage -C none -A arm -T script -d test_autoscript.command test_autoscript`), copy `test_autoscript` to the root of the USB drive, and run it in one of two ways:
+
+- **Manually, over the serial console** (see [Running `aml_autoscript` Manually](#troubleshooting--running-aml_autoscript-manually)), swapping the file name:
+  ```bash
+  usb start
+  fatload usb 0 $loadaddr test_autoscript
+  autoscr $loadaddr
+  ```
+- **With the reset button:** the button loads a file named `aml_autoscript`, so in that case the compiled file must have that name, and the button must be enabled (see [Reusing another `aml_autoscript`](#reusing-another-aml_autoscript)).
+
+This test filters out bad options, but does not prove an option is safe in `preboot`, which may behave differently from a script run after U-Boot has booted.
 
 ---
 
@@ -351,7 +415,7 @@ Runs **only once** per installation, at the moment you force recovery mode (by h
 
 1. **Restores the factory environment** (`defenv`, `env default -a`, and `saveenv`), starting from a clean base.
 2. **Defines the new boot route** (`start_autoscript`): SD card → USB → eMMC, redirecting the flow to the scripts below. `bootcmd` becomes just `run start_autoscript`, without Android's `storeboot`.
-3. **Sets up the bootlogo and video output** (`init_display`, run from `preboot`): picks the output mode (HDMI or CVBS), looks for `bootlogo.bmp` on USB, SD, and eMMC, and displays it.
+3. **Sets up the bootlogo and video output** (`init_display`, run from `preboot`): picks the output mode (HDMI or CVBS), looks for `bootlogo.bmp` on USB, SD, and eMMC, and displays it. The position of `osd open; osd clear` relative to `vout` can be adjusted in four variants (A to D), explained in [Background color before the bootlogo](#background-color-before-the-bootlogo-blue-or-green-screen).
 4. **Removes the Android variables** (recovery, burning, Dolby Vision, networking, A/B slots, etc.), keeping the environment lean.
 5. **Saves everything** with `saveenv` and calls `run start_autoscript` to start booting immediately.
 
