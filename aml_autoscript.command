@@ -155,6 +155,7 @@ setenv reboot_mode
 setenv reboot_mode_android
 setenv update_sdcard
 setenv update_udisk
+setenv Model
 
 saveenv
 
